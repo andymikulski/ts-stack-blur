@@ -50,7 +50,7 @@ setInterval(() => {
   //   i = 0;
   //   renderedMap = generateHeightmap(width,height, maxVal);
   // }
-  stackBlurInPlace(renderedMap, width, height, 1);
+  stackBlurInPlace(renderedMap, width, height, 2);
   // renderHeightmap(renderedMap, height, width);
   triggerUpdate();
 }, 1000 / 60);
@@ -71,10 +71,9 @@ window.addEventListener('mousemove', (e: MouseEvent) => {
     for (let xOffset = -2; xOffset <= 2; xOffset++) {
       const x = ((e.offsetX / cellSize) | 0) + xOffset;
       const y = ((e.offsetY / cellSize) | 0) + yOffset;
-      renderedMap[(y * width) + x] += (Math.random()*maxVal)|0;
+      renderedMap[(y * width) + x] = maxVal;
     }
   }
-  // triggerUpdate();
 });
 
 

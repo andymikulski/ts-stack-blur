@@ -76,25 +76,21 @@ const shg_table = [
   24, 24, 24, 24, 24, 24, 24,
 ];
 
-
 type BlurStack = {
   value: number;
   next?: BlurStack;
-}
+};
 
 export function stackBlurInPlace(
-  values: number[], // Renamed 'pixels' to 'values' for clarity since it's not pixel data
+  values: number[],
   width: number,
   height: number,
-  radius: number
+  radius: number = 2
 ) {
-  if (isNaN(radius) || radius < 1) return;
-  radius |= 0;
-
-  let x: number, y: number, i: number, p: number;
-  let yp: number, yi: number, yw: number;
-  let r_sum: number, r_out_sum: number, r_in_sum: number;
-  let value: number, rbs: number;
+  let pixelPosition: number;
+  let yPixelPosition: number, pixelIndex: number, ywPixelPosition: number;
+  let valueSum: number, valueOutSum: number, valueInSum: number;
+  let currentPixelValue: number, remainingBlurSteps: number;
 
   const div = radius + radius + 1;
   const widthMinus1 = width - 1;
@@ -104,126 +100,135 @@ export function stackBlurInPlace(
 
   const stackStart: BlurStack = { value: 0, next: undefined };
   let stackEnd: BlurStack | undefined;
-
   let stack = stackStart;
-  for (i = 1; i < div; i++) {
-    stack = stack.next = { value: 0, next: undefined };
+
+  // Creating a circular stack for the blur effect
+  for (let i = 1; i < div; i++) {
+    stack.next = { value: 0, next: undefined };
+    stack = stack.next;
     if (i === radiusPlus1) {
       stackEnd = stack;
     }
   }
   stack.next = stackStart;
 
-  let stackIn: BlurStack | undefined;
-  let stackOut: BlurStack | undefined;
+  let stackIn: BlurStack;
+  let stackOut: BlurStack;
 
-  yw = yi = 0;
+  ywPixelPosition = pixelIndex = 0;
 
   const mul_sum = mul_table[radius];
   const shg_sum = shg_table[radius];
 
-  for (y = 0; y < height; y++) {
-    r_in_sum = r_sum = 0;
+  for (let y = 0; y < height; y++) {
+    valueInSum = valueSum = 0;
 
-    r_out_sum = radiusPlus1 * (value = values[yi]);
-
-    r_sum += sumFactor * value;
-
+    // Initializing stack values for the current row
+    currentPixelValue = values[pixelIndex];
+    valueOutSum = radiusPlus1 * currentPixelValue;
+    valueSum += sumFactor * currentPixelValue;
     stack = stackStart;
 
-    for (i = 0; i < radiusPlus1; i++) {
-      stack.value = value;
+    for (let i = 0; i < radiusPlus1; i++) {
+      stack.value = currentPixelValue;
       stack = stack.next!;
     }
 
-    for (i = 1; i < radiusPlus1; i++) {
-      p = yi + (widthMinus1 < i ? widthMinus1 : i);
-      r_sum += (stack.value = value = values[p]) * (rbs = radiusPlus1 - i);
-
-      r_in_sum += value;
+    for (let i = 1; i < radiusPlus1; i++) {
+      pixelPosition = pixelIndex + (widthMinus1 < i ? widthMinus1 : i);
+      currentPixelValue = values[pixelPosition];
+      remainingBlurSteps = radiusPlus1 - i;
+      stack.value = currentPixelValue;
+      valueSum += currentPixelValue * remainingBlurSteps;
+      valueInSum += currentPixelValue;
       stack = stack.next!;
     }
 
     stackIn = stackStart;
     stackOut = stackEnd;
-    for (x = 0; x < width; x++) {
-      values[yi] = (r_sum * mul_sum) >> shg_sum;
 
-      r_sum -= r_out_sum;
+    for (let x = 0; x < width; x++) {
+      values[pixelIndex] = (valueSum * mul_sum) >> shg_sum;
+      valueSum -= valueOutSum;
+      valueOutSum -= stackIn.value;
 
-      r_out_sum -= stackIn!.value;
+      // Calculate the new position based on the current x position and the radius
+      let newPixelPosition = x + radius + 1;
 
-      p = yw + ((p = x + radius + 1) < widthMinus1 ? p : widthMinus1);
+      // Check if this new position is within the width boundary, and adjust if necessary
+      if (newPixelPosition > widthMinus1) {
+        newPixelPosition = widthMinus1;
+      }
 
-      r_in_sum += stackIn!.value = values[p];
+      // Calculate the final pixel position
+      pixelPosition = ywPixelPosition + newPixelPosition;
 
-      r_sum += r_in_sum;
-
-      stackIn = stackIn!.next;
-
-      r_out_sum += value = stackOut!.value;
-
-      r_in_sum -= value;
-
-      stackOut = stackOut!.next;
-
-      yi++;
+      stackIn.value = values[pixelPosition];
+      valueInSum += values[pixelPosition];
+      valueSum += valueInSum;
+      stackIn = stackIn.next;
+      valueOutSum += currentPixelValue = stackOut.value;
+      valueInSum -= currentPixelValue;
+      stackOut = stackOut.next;
+      pixelIndex++;
     }
-    yw += width;
+    ywPixelPosition += width;
   }
 
-  for (x = 0; x < width; x++) {
-    r_in_sum = r_sum = 0;
-
-    yi = x;
-    r_out_sum = radiusPlus1 * (value = values[yi]);
-
-    r_sum += sumFactor * value;
-
+  for (let x = 0; x < width; x++) {
+    valueInSum = valueSum = 0;
+    pixelIndex = x;
+    currentPixelValue = values[pixelIndex];
+    valueOutSum = radiusPlus1 * currentPixelValue;
+    valueSum += sumFactor * currentPixelValue;
     stack = stackStart;
 
-    for (i = 0; i < radiusPlus1; i++) {
-      stack.value = value;
+    for (let i = 0; i < radiusPlus1; i++) {
+      stack.value = currentPixelValue;
       stack = stack.next!;
     }
+    yPixelPosition = width;
 
-    yp = width;
-
-    for (i = 1; i <= radius; i++) {
-      yi = yp + x;
-      r_sum += (stack.value = value = values[yi]) * (rbs = radiusPlus1 - i);
-
-      r_in_sum += value;
+    for (let i = 1; i <= radius; i++) {
+      pixelIndex = yPixelPosition + x;
+      currentPixelValue = values[pixelIndex];
+      remainingBlurSteps = radiusPlus1 - i;
+      stack.value = currentPixelValue;
+      valueSum += currentPixelValue * remainingBlurSteps;
+      valueInSum += currentPixelValue;
       stack = stack.next!;
-
       if (i < heightMinus1) {
-        yp += width;
+        yPixelPosition += width;
       }
     }
 
-    yi = x;
+    pixelIndex = x;
     stackIn = stackStart;
     stackOut = stackEnd;
-    for (y = 0; y < height; y++) {
-      values[yi] = (r_sum * mul_sum) >> shg_sum;
 
-      r_sum -= r_out_sum;
+    for (let y = 0; y < height; y++) {
+      values[pixelIndex] = (valueSum * mul_sum) >> shg_sum;
+      valueSum -= valueOutSum;
+      valueOutSum -= stackIn.value;
 
-      r_out_sum -= stackIn!.value;
+      // Calculate the new position based on the current y position and the radius plus one
+      let newPixelPosition = y + radiusPlus1;
 
-      p = x + ((p = y + radiusPlus1) < heightMinus1 ? p : heightMinus1) * width;
+      // Check if this new position is within the height boundary, and adjust if necessary
+      if (newPixelPosition > heightMinus1) {
+        newPixelPosition = heightMinus1;
+      }
 
-      r_sum += r_in_sum += stackIn!.value = values[p];
+      // Calculate the final pixel position
+      pixelPosition = x + newPixelPosition * width;
 
-      stackIn = stackIn!.next;
-
-      r_out_sum += value = stackOut!.value;
-
-      r_in_sum -= value;
-
-      stackOut = stackOut!.next;
-
-      yi += width;
+      stackIn.value = values[pixelPosition];
+      valueSum += valueInSum += values[pixelPosition];
+      stackIn = stackIn.next;
+      valueOutSum += currentPixelValue = stackOut.value;
+      valueInSum -= currentPixelValue;
+      stackOut = stackOut.next;
+      pixelIndex += width;
     }
   }
 }
